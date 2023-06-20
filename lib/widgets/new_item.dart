@@ -20,21 +20,47 @@ class _NewItem extends State<NewItem> {
   var _enteredName = '';
   var _enteredQuantity = 1;
   var _selectedCategory = categories[Categories.vegetables];
+  var _isSending = false;
 
-  void _saveItem() {
+  void _saveItem() async {
     if (_formKey.currentState!.validate()) {
       //to save the item it shoukd be validate first so we can't assign default value
       _formKey.currentState!.save();
+      setState(() {
+        _isSending = true;
+      });
+      final url = Uri.https('flutter-prep-710e6-default-rtdb.firebaseio.com',
+          'shopping-list.json');
+      final response = await http.post(
+        url,
+        headers: {
+          //header contains metadata
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(
+          //since we specifying in header that our metadata is im json formatt so we also have to pass the body in json formatt as well and we can do it using json.encode()
+          {
+            'name': _enteredName,
+            'quantity': _enteredQuantity,
+            'category': _selectedCategory!.title,
+          },
+        ),
+      );
+
+      final Map<String, dynamic> resData = json.decode(response
+          .body); //we can direct get element id here instead of uploading value then wait to fetch from the databas ,because here at time when we uploading data on database only id is set dynamiclly by firebase so we can take that id only and render element on screen instead of _loadItem in grocery_list
+
+      if (!context.mounted) {
+        return;
+      }
       Navigator.of(context).pop(
         GroceryItem(
-            id: DateTime.now().toString(),
-            name: _enteredName,
-            quantity: _enteredQuantity,
-            category: _selectedCategory!),
+          id: resData['name'],
+          name: _enteredName,
+          quantity: _enteredQuantity,
+          category: _selectedCategory!,
+        ),
       );
-      // print(_enteredName);
-      // print(_enteredQuantity);
-      // print(_selectedCategory);
     }
   }
 
@@ -138,14 +164,23 @@ class _NewItem extends State<NewItem> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
-                    onPressed: () {
-                      _formKey.currentState!.reset();
-                    },
+                    //cuz sending null willm disable the button
+                    onPressed: _isSending
+                        ? null
+                        : () {
+                            _formKey.currentState!.reset();
+                          },
                     child: Text('Reset'),
                   ),
                   ElevatedButton(
-                    onPressed: _saveItem,
-                    child: Text('Add Item'),
+                    onPressed: _isSending ? null : _saveItem,
+                    child: _isSending
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(),
+                          )
+                        : Text('Add Item'),
                   ),
                 ],
               )
