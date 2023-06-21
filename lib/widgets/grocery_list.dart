@@ -14,36 +14,32 @@ class GroceryList extends StatefulWidget {
 
 class _GroceryListState extends State<GroceryList> {
   List<GroceryItem> _groceryItems = [];
-  var _isLoading = true;
+  late Future<List<GroceryItem>> _loadedItems;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _loadItem();
+    _loadedItems = _loadItem();
   }
 
-  void _loadItem() async {
+  Future<List<GroceryItem>> _loadItem() async {
     final url = Uri.https(
         'flutter-prep-710e6-default-rtdb.firebaseio.com', 'shopping-list.json');
 
-    try{
-      final response = await http.get(url);
+    final response = await http.get(url);
 
-          if (response.statusCode >= 400) {
-      setState(() {
-        _error = 'Failed to fetch data please try again later';
-      });
+    if (response.statusCode >= 400) {
+      throw Exception('Failed to fetch grocery item. Please try again later');
     }
 
-    if(response.body == null){        //if list is empty then we have to stop loading icon and return from there  //also firebase return null if list is empty other database might return empty string or any other thing  //we can check it through status or response.body
-      setState(() {
-        _isLoading = false;
-      });
-      return;
+    if (response.body == null) {
+      //if list is empty then we have to stop loading icon and return from there  //also firebase return null if list is empty other database might return empty string or any other thing  //we can check it through status or response.body
+      return [];
     }
 
-    final Map<String, dynamic> listData = json.decode(response.body);    //it will always show loading screen if list were empty cuz we are trying to decode the response body which is null
+    final Map<String, dynamic> listData = json.decode(response
+        .body); //it will always show loading screen if list were empty cuz we are trying to decode the response body which is null
     final List<GroceryItem> loadedItems = [];
     for (final item in listData.entries) {
       final category = categories.entries
@@ -59,15 +55,7 @@ class _GroceryListState extends State<GroceryList> {
         ),
       );
     }
-    setState(() {
-      _groceryItems = loadedItems;
-      _isLoading = false;
-    });
-    }catch(error){
-      setState(() {
-        _error = 'Something went wrong. please try again later';
-      });
-    }
+    return loadedItems;
   }
 
   @override
@@ -85,20 +73,18 @@ class _GroceryListState extends State<GroceryList> {
     });
   }
 
-  void _removeItem(GroceryItem item)async {
+  void _removeItem(GroceryItem item) async {
     final index = _groceryItems.indexOf(item);
     setState(() {
       _groceryItems.remove(item);
     });
 
-    final url = Uri.https(
-        'flutter-prep-710e6-default-rtdb.firebaseio.com', 'shopping-list/${item.id}.json');
-   final response = await http.delete(url);
-    if(response.statusCode >= 400){
+    final url = Uri.https('flutter-prep-710e6-default-rtdb.firebaseio.com',
+        'shopping-list/${item.id}.json');
+    final response = await http.delete(url);
+    if (response.statusCode >= 400) {
       //Optional show error message
-      setState(() {
-        _groceryItems.insert(index, item);  //use insert instead of add cuz insert also want index and value
-      });
+      throw Exception('Failled to fetch grocery Items. Please try agin later');
     }
   }
 
@@ -106,42 +92,6 @@ class _GroceryListState extends State<GroceryList> {
     Widget content = const Center(
       child: Text('Nothing is here add something'),
     );
-
-    if (_isLoading) {
-      content = const Center(
-        child: CircularProgressIndicator(),
-      );
-    }
-
-    if (_groceryItems.isNotEmpty) {
-      content = ListView.builder(
-        //we can have dozen or hundred of dummy data in future so its preferable to use listview instead of coulum since it also give option to scroll
-        itemCount: _groceryItems
-            .length, //prev itemCount: groceryItems.length, from here substitute all the groceryItems with _groceryItems since we are creating new list here previously we are using dummy data
-        itemBuilder: (context, index) => Dismissible(
-          child: ListTile(
-            //we can us erow widget here but ListTile come with some built in list optimized styling , alsogive some inbuilt feature
-            title: Text(_groceryItems[index].name),
-            leading: Container(
-              height: 24,
-              width: 24,
-              color: _groceryItems[index].category.color,
-            ),
-            trailing: Text(_groceryItems[index].quantity.toString()),
-          ),
-          key: ValueKey(_groceryItems[index].id),
-          onDismissed: (direction) {
-            _removeItem(_groceryItems[index]);
-          },
-        ),
-      );
-    }
-
-    if (_error != null) {
-      content = Center(
-        child: Text(_error!),
-      );
-    }
 
     return Scaffold(
       appBar: AppBar(
@@ -153,7 +103,50 @@ class _GroceryListState extends State<GroceryList> {
           )
         ],
       ),
-      body: content,
+      body: FutureBuilder(
+        future: _loadedItems,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: Text(
+                snapshot.error.toString(),
+              ),
+            );
+          }
+
+          if (snapshot.data!.isEmpty) {
+            return const Center(
+              child: Text('No idem add yet'),
+            );
+          }
+          return ListView.builder(
+            //we can have dozen or hundred of dummy data in future so its preferable to use listview instead of coulum since it also give option to scroll
+            itemCount: snapshot.data!
+                .length, //prev itemCount: groceryItems.length, from here substitute all the groceryItems with _groceryItems since we are creating new list here previously we are using dummy data
+            itemBuilder: (context, index) => Dismissible(
+              child: ListTile(
+                //we can us erow widget here but ListTile come with some built in list optimized styling , alsogive some inbuilt feature
+                title: Text(snapshot.data![index].name),
+                leading: Container(
+                  height: 24,
+                  width: 24,
+                  color: snapshot.data![index].category.color,
+                ),
+                trailing: Text(snapshot.data![index].quantity.toString()),
+              ),
+              key: ValueKey(snapshot.data![index].id),
+              onDismissed: (direction) {
+                _removeItem(snapshot.data![index]);
+              },
+            ),
+          );
+        },
+      ),
     );
   }
 }
